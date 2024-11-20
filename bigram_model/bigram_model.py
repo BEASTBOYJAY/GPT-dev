@@ -166,6 +166,6 @@ class TrainandEval:
 
 if __name__ == "__main__":
 
-    trainer = TrainandEval("config.yaml")
+    trainer = TrainandEval("bigram_model/config.yaml")
     trainer.train()
     print(trainer.generate())

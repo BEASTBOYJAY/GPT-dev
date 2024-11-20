@@ -1,130 +1,171 @@
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-
-# hyperparameters
-batch_size = 32  # Number of independent sequences will we process in parallel
-block_size = 8  # the maximum context length for predictions
-max_iters = 3000
-eval_interval = 300
-learning_rate = 1e-2
-device = "cuda" if torch.cuda.is_available() else "cpu"
-eval_iters = 200
-# ------------
-
-torch.manual_seed(1337)
-
-with open("input.txt", "r", encoding="utf-8") as f:
-    text = f.read()
-
-# here are all the unique characters that occur in this text
-chars = sorted(list(set(text)))
-vocab_size = len(chars)
-# create a mapping from characters to integers
-stoi = {ch: i for i, ch in enumerate(chars)}
-itos = {i: ch for i, ch in enumerate(chars)}
-encode = lambda s: [
-    stoi[c] for c in s
-]  # encoder: take a string, output a list of integers
-decode = lambda l: "".join(
-    [itos[i] for i in l]
-)  # decoder: take a list of integers, output a string
-
-# Train and test splits
-data = torch.tensor(encode(text), dtype=torch.long)
-n = int(0.9 * len(data))  # first 90% will be train, rest val
-train_data = data[:n]
-val_data = data[n:]
+import yaml
 
 
-# Data Loaders
-def get_batch(split):
-    # generate a small batch of data of inputs x and targets y
-    data = train_data if split == "train" else val_data
-    ix = torch.randint(len(data) - block_size, (batch_size,))
-    x = torch.stack([data[i : i + block_size] for i in ix])
-    y = torch.stack([data[i + 1 : i + block_size + 1] for i in ix])
-    x, y = x.to(device), y.to(device)
-    return x, y
+class DataProcessor:
+    """
+    Handles text processing, tokenization, and data preparation for training and validation.
+    """
+
+    def __init__(self, file_path: str, block_size: int, train_split: float = 0.9):
+        with open(file_path, "r", encoding="utf-8") as f:
+            self.text = f.read()
+
+        self.chars = sorted(set(self.text))
+        self.vocab_size = len(self.chars)
+        self.stoi = {ch: i for i, ch in enumerate(self.chars)}
+        self.itos = {i: ch for i, ch in enumerate(self.chars)}
+        self.block_size = block_size
+
+        # Encode text and split into train and validation datasets
+        data = torch.tensor(self.encode(self.text), dtype=torch.long)
+        n = int(train_split * len(data))
+        self.train_data = data[:n]
+        self.val_data = data[n:]
+
+    def encode(self, s: str):
+        """Convert a string to a list of integers based on the vocabulary."""
+        return [self.stoi[c] for c in s]
+
+    def decode(self, l: list):
+        """Convert a list of integers back to a string."""
+        return "".join([self.itos[i] for i in l])
+
+    def get_batch(self, split: str, batch_size: int, device: str):
+        """
+        Generate a batch of input-output pairs.
+        """
+        data = self.train_data if split == "train" else self.val_data
+        ix = torch.randint(len(data) - self.block_size, (batch_size,))
+        x = torch.stack([data[i : i + self.block_size] for i in ix])
+        y = torch.stack([data[i + 1 : i + self.block_size + 1] for i in ix])
+        return x.to(device), y.to(device)
 
 
-@torch.no_grad()
-def estimate_loss():
-    out = {}
-    model.eval()
-    for split in ["train", "val"]:
-        losses = torch.zeros(eval_iters)
-        for k in range(eval_iters):
-            X, Y = get_batch(split)
-            logits, loss = model(X, Y)
-            losses[k] = loss.item()
-        out[split] = losses.mean()
-    model.train()
-    return out
-
-
-# super simple bigram model
 class BigramLanguageModel(nn.Module):
+    """
+    A simple bigram language model with token embedding and sequence generation capabilities.
+    """
+
     def __init__(self, vocab_size):
         super().__init__()
-        # Each token will directly reads from the logits for the next token from the lookup table
         self.token_embedding_table = nn.Embedding(vocab_size, vocab_size)
 
     def forward(self, idx, targets=None):
-        # idx and targets are both (B,T) tensor of the integers
-        logits = self.token_embedding_table(idx)  # (B,T,C)(batch,time,channel)
-
-        # The pytorch cross_entropy expects B*T by C for the loss calculation
+        logits = self.token_embedding_table(idx)  # (B, T, C)
         B, T, C = logits.shape
-        if targets is None:
-            loss = None
-        else:
+        if targets is not None:
             logits = logits.view(B * T, C)
             targets = targets.view(B * T)
             loss = F.cross_entropy(logits, targets)
-
+        else:
+            loss = None
         return logits, loss
 
     def generate(self, idx, max_new_tokens):
-        # idx is (B,T) array of indices in the current context
         for _ in range(max_new_tokens):
-            # Get the predictions
-            logits, loss = self(idx)
-            # Focus only on the last time step
-            logits = logits[:, -1, :]  # becomes (B,C)
-            # apply softmax to get the probabilites
-            probs = F.softmax(logits, dim=-1)  # (B,C)
-            # sample from the distribution
-            idx_next = torch.multinomial(probs, num_samples=1)  # (B,1)
-            # append sampled index to the running sequence
-            idx = torch.cat((idx, idx_next), dim=1)  # (B,T+1)
+            logits, _ = self(idx)
+            logits = logits[:, -1, :]  # Focus on the last time step
+            probs = F.softmax(logits, dim=-1)
+            idx_next = torch.multinomial(probs, num_samples=1)  # Sample next token
+            idx = torch.cat((idx, idx_next), dim=1)  # Append to context
         return idx
 
 
-model = BigramLanguageModel(vocab_size)
-model = model.to(device)
+class Trainer:
+    """
+    Manages training, evaluation, and optimization of the language model.
+    """
 
-# create a PyTorch optimizer
-optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+    def __init__(
+        self,
+        model,
+        data_processor,
+        device,
+        learning_rate,
+        eval_iters,
+        batch_size,
+        epochs,
+        eval_interval,
+    ):
+        self.model = model.to(device)
+        self.data_processor = data_processor
+        self.device = device
+        self.optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
+        self.eval_iters = eval_iters
+        self.batch_size = batch_size
+        self.epochs = epochs
+        self.eval_interval = eval_interval
 
-for iter in range(max_iters):
+    def estimate_loss(self):
+        """Estimate loss on training and validation datasets."""
+        self.model.eval()
+        losses = {split: torch.zeros(self.eval_iters) for split in ["train", "val"]}
+        with torch.no_grad():
+            for split in ["train", "val"]:
+                for k in range(self.eval_iters):
+                    X, Y = self.data_processor.get_batch(
+                        split, self.batch_size, self.device
+                    )
+                    _, loss = self.model(X, Y)
+                    losses[split][k] = loss.item()
+        self.model.train()
+        return {split: losses[split].mean().item() for split in ["train", "val"]}
 
-    # every once in a while evaluate the loss on train and val sets
-    if iter % eval_interval == 0:
-        losses = estimate_loss()
-        print(
-            f"step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
+    def train(self):
+        """Train the model for a specified number of iterations."""
+        for iter in range(self.epochs):
+            if iter % self.eval_interval == 0:
+                losses = self.estimate_loss()
+                print(
+                    f"Step {iter}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}"
+                )
+
+            xb, yb = self.data_processor.get_batch(
+                "train", self.batch_size, self.device
+            )
+            logits, loss = self.model(xb, yb)
+            self.optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            self.optimizer.step()
+
+
+class TrainandEval:
+    def __init__(self, config_file: str):
+        torch.manual_seed(1337)
+        self.config = self.load_config(config_file)
+        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.data_processor = DataProcessor(**self.config["data_processor"])
+        self.model = BigramLanguageModel(self.data_processor.vocab_size)
+        self.trainer = Trainer(
+            self.model,
+            self.data_processor,
+            **self.config["trainer"],
+            device=self.device,
         )
 
-    # sample a batch of data
-    xb, yb = get_batch("train")
+    def load_config(self, config_file):
+        with open(config_file, "r") as f:
+            return yaml.safe_load(f)
 
-    # evaluate the loss
-    logits, loss = model(xb, yb)
-    optimizer.zero_grad(set_to_none=True)
-    loss.backward()
-    optimizer.step()
+    def train(self):
+        self.trainer.train()
 
-# generate from the model
-context = torch.zeros((1, 1), dtype=torch.long, device=device)
-print(decode(model.generate(context, max_new_tokens=500)[0].tolist()))
+    def generate(
+        self,
+    ):
+        context = torch.zeros((1, 1), dtype=torch.long, device=self.device)
+        generated_text = self.data_processor.decode(
+            self.model.generate(context, **self.config["generate"])[0].tolist()
+        )
+
+        return generated_text
+
+
+if __name__ == "__main__":
+
+    trainer = TrainandEval("config.yaml")
+    trainer.train()
+    print(trainer.generate())

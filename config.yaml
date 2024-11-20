@@ -1,0 +1,14 @@
+data_processor:
+  file_path: "input.txt"
+  block_size: 8
+  train_split: 0.9
+
+trainer:
+  learning_rate: 0.01
+  eval_iters: 200
+  batch_size: 32
+  epochs: 3000
+  eval_interval: 300
+
+generate:
+  max_new_tokens: 500

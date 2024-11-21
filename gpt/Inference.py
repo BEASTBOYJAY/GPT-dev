@@ -5,7 +5,7 @@ from components.Trainer import Trainer
 from utils.utils import get_vocab_size
 
 
-class GPTTrainerPipeline:
+class GPTInferencePipeline:
     """
     A pipeline for training and generating text using the GPT model.
 
@@ -74,16 +74,19 @@ class GPTTrainerPipeline:
             save_interval=self.save_interval,
         )
 
-    def train_model(self):
+    def load_model(self, model_path):
         """
-        Trains the model using the Trainer class.
+        Loads a pre-trained model from the specified path.
 
-        Returns:
-            nn.Module: The trained GPT model.
+        Args:
+            model_path (str): The path to the pre-trained model file.
         """
-        return self.trainer.train()
+        self.model.load_state_dict(
+            torch.load(model_path, map_location=torch.device("cpu"))
+        )
+        self.model.eval()  # Set the model to evaluation mode
 
-    def generate_text(self, prompt: str, max_new_tokens=100):
+    def generate_text(self, prompt=None, max_new_tokens=100):
         """
         Generates text from the trained model based on a given prompt.
 
@@ -101,11 +104,9 @@ if __name__ == "__main__":
     config_path = "gpt/confg.yaml"
 
     # Initialize the GPTTrainerPipeline with the given configuration
-    pipeline = GPTTrainerPipeline(config_path=config_path)
+    pipeline = GPTInferencePipeline(config_path=config_path)
 
-    # Train the model using the pipeline
-    trained_model = pipeline.train_model()
-
+    pipeline.load_model("gpt/model_epoch_50.pt")
     # Generate text based on the prompt "The Lord of the Rings"
-    generated_text = pipeline.generate_text("The Lord of the Rings")
+    generated_text = pipeline.generate_text()
     print(generated_text)

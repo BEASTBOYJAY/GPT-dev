@@ -1,0 +1,21 @@
+Attention:
+  n_embd: 16
+  n_head: 2
+  dropout: 0.2
+
+Transformer_block:
+  n_layer: 1
+
+Training:
+  batch_size: 2
+  epochs: 1
+  learning_rate: 0.0003
+  eval_iters: 2
+  block_size: 5
+
+File:
+  file_path: "input.txt"
+
+Model_save:
+  model_save_path: "gpt_language_model.pth"
+  save_interval: 10

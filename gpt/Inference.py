@@ -82,7 +82,7 @@ class GPTInferencePipeline:
             model_path (str): The path to the pre-trained model file.
         """
         self.model.load_state_dict(
-            torch.load(model_path, map_location=torch.device("cpu"))
+            torch.load(model_path, map_location=torch.device("cpu"), weights_only=True)
         )
         self.model.eval()  # Set the model to evaluation mode
 
@@ -106,7 +106,7 @@ if __name__ == "__main__":
     # Initialize the GPTTrainerPipeline with the given configuration
     pipeline = GPTInferencePipeline(config_path=config_path)
 
-    pipeline.load_model("gpt/model_epoch_50.pt")
+    pipeline.load_model("results/model_epoch_400.pt")
     # Generate text based on the prompt "The Lord of the Rings"
     generated_text = pipeline.generate_text()
     print(generated_text)

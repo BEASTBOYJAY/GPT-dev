@@ -14,19 +14,26 @@ A PyTorch-based implementation of a GPT-style language model featuring multi-hea
 ## Project Structure
 
 ```
-.
-├── components/
-│   ├── Attention.py         # Single and multi-head attention implementations
-│   ├── FeedForward.py      # Feed-forward network component
-│   ├── Transformer_block.py # Transformer block implementation
-│   ├── Language_model.py    # Main GPT model architecture
-│   ├── Data_processor.py    # Data handling and preprocessing
-│   └── Trainer.py          # Training loop and utilities
-├── utils/
-│   └── utils.py            # Utility functions
-├── Train.py                # Training pipeline
-├── Inference.py           # Inference pipeline
-└── config.yaml            # Model and training configuration
+├── Notebooks/                   # Different .pynb files used for research/learning  
+├── bigram_model/
+│   ├── bigram_model.py          # Simple bigram model which is a inital for learning the gpt model 
+│   ├── config.yaml              # Config file for the trainig and inference of the bigram model
+│
+├── gpt/
+│   ├── components/
+│   │   ├── Attention.py         # Single and multi-head attention implementations
+│   │   ├── FeedForward.py       # Feed-forward network component
+│   │   ├── Transformer_block.py # Transformer block implementation
+│   │   ├── Language_model.py    # Main GPT model architecture
+│   │   ├── Data_processor.py    # Data handling and preprocessing
+│   │   └── Trainer.py           # Training loop and utilities
+│   ├── utils/
+│   │   └── utils.py             # Utility functions
+│   ├── Train.py                 # Training pipeline
+│   ├── Inference.py             # Inference pipeline
+│   └── config.yaml              # Model and training configuration
+│
+│
 ```
 
 ## Installation
